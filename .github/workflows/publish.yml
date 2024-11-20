@@ -1,0 +1,51 @@
+name: Build & Publish
+
+on:
+  push:
+    branches:
+      - master
+    tags:
+      - "*.*.*"
+  workflow_dispatch:
+
+env:
+  VERSION: ${{ github.ref_name }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Build
+        run: |
+          dotnet build -c Release Source/YoloV8/YoloV8.csproj -p:Version=${{ env.VERSION }}
+          dotnet build -c GpuRelease Source/YoloV8/YoloV8.csproj -p:Version=${{ env.VERSION }}
+
+      - name: Test
+        run: dotnet test Source/YoloV8.Tests/YoloV8.Tests.csproj
+
+      - name: Pack
+        run: |
+          dotnet pack -c Release -o . Source/YoloV8/YoloV8.csproj -p:Version=${{ env.VERSION }}
+          dotnet pack -c GpuRelease -o . Source/YoloV8/YoloV8.csproj -p:Version=${{ env.VERSION }}
+
+      - name: Publish
+        run: dotnet nuget push *.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+      - name: Create release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          gh release create ${{ env.VERSION }}
+          --repo ${{ github.event.repository.full_name }}
+          --title ${{ env.VERSION }}
+          --generate-notes
+          --verify-tag
